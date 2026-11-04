@@ -1,0 +1,203 @@
+{
+  "grid": "shipments",
+  "threshold": 50000,
+  "defaultSort": [
+    {
+      "field": "shippedOn",
+      "dir": "desc"
+    }
+  ],
+  "columns": [
+    {
+      "field": "shipmentId",
+      "type": "number",
+      "sortable": true,
+      "filterable": true,
+      "searchable": false,
+      "indexed": true,
+      "restricted": false,
+      "ops": [
+        "equals",
+        "notEqual",
+        "lessThan",
+        "lessThanOrEqual",
+        "greaterThan",
+        "greaterThanOrEqual",
+        "inRange",
+        "blank",
+        "notBlank"
+      ],
+      "dateSemantics": null
+    },
+    {
+      "field": "trackingNo",
+      "type": "text",
+      "sortable": true,
+      "filterable": true,
+      "searchable": true,
+      "indexed": true,
+      "restricted": false,
+      "ops": [
+        "contains",
+        "notContains",
+        "equals",
+        "notEqual",
+        "startsWith",
+        "endsWith",
+        "blank",
+        "notBlank"
+      ],
+      "dateSemantics": null
+    },
+    {
+      "field": "warehouseCode",
+      "type": "set",
+      "sortable": true,
+      "filterable": true,
+      "searchable": false,
+      "indexed": true,
+      "restricted": false,
+      "ops": [
+        "in"
+      ],
+      "dateSemantics": null
+    },
+    {
+      "field": "destination",
+      "type": "text",
+      "sortable": true,
+      "filterable": true,
+      "searchable": true,
+      "indexed": false,
+      "restricted": false,
+      "ops": [
+        "contains",
+        "notContains",
+        "equals",
+        "notEqual",
+        "startsWith",
+        "endsWith",
+        "blank",
+        "notBlank"
+      ],
+      "dateSemantics": null
+    },
+    {
+      "field": "status",
+      "type": "set",
+      "sortable": true,
+      "filterable": true,
+      "searchable": false,
+      "indexed": true,
+      "restricted": false,
+      "ops": [
+        "in"
+      ],
+      "dateSemantics": null
+    },
+    {
+      "field": "carrier",
+      "type": "set",
+      "sortable": false,
+      "filterable": true,
+      "searchable": false,
+      "indexed": false,
+      "restricted": false,
+      "ops": [
+        "in"
+      ],
+      "dateSemantics": null
+    },
+    {
+      "field": "weightKg",
+      "type": "number",
+      "sortable": true,
+      "filterable": true,
+      "searchable": false,
+      "indexed": false,
+      "restricted": false,
+      "ops": [
+        "equals",
+        "notEqual",
+        "lessThan",
+        "lessThanOrEqual",
+        "greaterThan",
+        "greaterThanOrEqual",
+        "inRange",
+        "blank",
+        "notBlank"
+      ],
+      "dateSemantics": null
+    },
+    {
+      "field": "shippedOn",
+      "type": "date",
+      "sortable": true,
+      "filterable": true,
+      "searchable": false,
+      "indexed": false,
+      "restricted": false,
+      "ops": [
+        "equals",
+        "notEqual",
+        "lessThan",
+        "lessThanOrEqual",
+        "greaterThan",
+        "greaterThanOrEqual",
+        "inRange",
+        "blank",
+        "notBlank"
+      ],
+      "dateSemantics": "local"
+    },
+    {
+      "field": "deliveredOn",
+      "type": "date",
+      "sortable": true,
+      "filterable": true,
+      "searchable": false,
+      "indexed": false,
+      "restricted": false,
+      "ops": [
+        "equals",
+        "notEqual",
+        "lessThan",
+        "lessThanOrEqual",
+        "greaterThan",
+        "greaterThanOrEqual",
+        "inRange",
+        "blank",
+        "notBlank"
+      ],
+      "dateSemantics": "utc"
+    },
+    {
+      "field": "flagged",
+      "type": "boolean",
+      "sortable": false,
+      "filterable": true,
+      "searchable": false,
+      "indexed": false,
+      "restricted": false,
+      "ops": [
+        "equals",
+        "blank",
+        "notBlank"
+      ],
+      "dateSemantics": null
+    },
+    {
+      "field": "priceTier",
+      "type": "set",
+      "sortable": false,
+      "filterable": true,
+      "searchable": false,
+      "indexed": false,
+      "restricted": true,
+      "ops": [
+        "in"
+      ],
+      "dateSemantics": null
+    }
+  ]
+}

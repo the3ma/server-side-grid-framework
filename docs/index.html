@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Server-side grid framework · Case study</title>
+  <meta name="description" content="Case study: replacing a hand-written SQL builder per grid with one contract, one column allow-list and one SQL builder for SQL Server and Oracle - injection-safe, row-scope-safe, guarded against full scans, and never an empty grid on failure.">
+  <meta property="og:title" content="Server-side grid framework · Case study">
+  <meta property="og:description" content="A grid is a contract, not a query: how a regulated data portal got one safe way to page, sort and filter every grid.">
+  <meta property="og:type" content="article">
+  <meta name="color-scheme" content="dark light">
+  <link rel="preload" href="assets/fonts/overpass-latin-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/styles.css">
+  <script>
+    // Saved theme before first paint; otherwise follow the system (dark-first stylesheet).
+    (function () {
+      var root = document.documentElement, saved = null;
+      try { saved = localStorage.getItem('theme'); } catch (e) {}
+      if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+      var dark = saved ? saved === 'dark' : !window.matchMedia('(prefers-color-scheme: light)').matches;
+      root.setAttribute('data-resolved', dark ? 'dark' : 'light');
+    })();
+  </script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="product" href="#top"><span class="mark" aria-hidden="true"></span><strong><span class="long">Server-side grid framework</span><span class="short">Grid framework</span></strong><span class="sub">Case study</span></a>
+    <div class="topbar-actions">
+      <button class="btn btn-secondary btn-sm theme-toggle" type="button" id="theme-toggle" aria-pressed="false">
+        <svg class="icon-moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        <svg class="icon-sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9 13 13M3 13l1.1-1.1M11.9 4.1 13 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span class="label">Light theme</span>
+      </button>
+      <a class="btn btn-primary btn-sm topbar-contact" href="#contact" aria-label="Contact"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m2.5 4.5 5.5 4 5.5-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="label">Contact</span></a>
+    </div>
+  </div>
+  <div class="progress" aria-hidden="true"></div>
+</header>
+
+<main id="main">
+
+<section class="hero" id="top" aria-labelledby="title">
+  <div class="wrap">
+    <h1 id="title">A grid is a contract, not a query.</h1>
+    <p class="lead">How a regulated data portal went from five grid response shapes and a hand-written SQL builder per screen to one contract, one column allow-list and one SQL builder for SQL Server and Oracle. Every grid built on it pages, sorts and filters on the server in a way that cannot inject SQL, cannot widen a user&rsquo;s row scope, refuses full-table scans and never shows an empty grid on failure. A public reference implementation in .NET 8 and Angular, generalized from production work.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="#contact">Contact</a>
+      <a class="btn btn-secondary" href="#architecture">Read the architecture</a>
+    </div>
+
+    <figure class="hero-map" aria-labelledby="hm-t">
+      <div class="map-h"><div class="diagram" tabindex="0" role="region" aria-label="The line one page request rides">
+        <svg class="dg" viewBox="0 0 920 290" role="img" aria-labelledby="hm-t hm-d">
+          <title id="hm-t">The line one page request rides</title>
+          <desc id="hm-d">The query line runs through six stations: a grid change (sort, filter, page or search), one request shape sent in the POST body, the guard (allow-list and limits), the SQL builder with bound parameters only, the database (SQL Server or Oracle), and the rendered page with a strict parse and an honest total. From the guard, the guard line leads to a refused scan: 400, and the UI says why. From the database, the error line leads to a timeout or fault: 504 or 500, value-free. Both lines end at the inline banner: never an empty grid.</desc>
+          <path class="rail guard" d="M380,90 L380,180 Q380,214 414,214 L540,214"/>
+          <path class="rail error" d="M700,90 L700,180 Q700,214 666,214 L540,214"/>
+          <path class="rail query" d="M60,90 L860,90"/>
+
+          <circle class="stn query" cx="60" cy="90" r="11"/>
+          <circle class="stn query" cx="220" cy="90" r="11"/>
+          <circle class="stn ix" cx="380" cy="90" r="14"/>
+          <circle class="stn query" cx="540" cy="90" r="11"/>
+          <circle class="stn ix" cx="700" cy="90" r="14"/>
+          <circle class="stn term" cx="860" cy="90" r="13"/>
+          <circle class="stn guard" cx="430" cy="214" r="11"/>
+          <circle class="stn error" cx="650" cy="214" r="11"/>
+          <circle class="stn term" cx="540" cy="214" r="13" style="fill:var(--l-error);stroke:var(--l-error)"/>
+
+          <text class="title" x="60" y="52" text-anchor="middle">Grid change</text>
+          <text class="small" x="60" y="128" text-anchor="middle">sort, filter, search</text>
+          <text class="title" x="220" y="52" text-anchor="middle">One request</text>
+          <text class="small" x="220" y="128" text-anchor="middle">POST body, one shape</text>
+          <text class="title" x="380" y="52" text-anchor="middle">Guard</text>
+          <text class="small lbl-bg" x="380" y="134" text-anchor="middle">allow-list + limits</text>
+          <text class="title" x="540" y="52" text-anchor="middle">SQL builder</text>
+          <text class="small" x="540" y="128" text-anchor="middle">bound parameters only</text>
+          <text class="title" x="700" y="52" text-anchor="middle">Database</text>
+          <text class="small lbl-bg" x="700" y="134" text-anchor="middle">SQL Server or Oracle</text>
+          <text class="title" x="860" y="52" text-anchor="middle">Page</text>
+          <text class="small" x="860" y="128" text-anchor="middle">strict parse, honest total</text>
+
+          <text class="title" x="430" y="254" text-anchor="middle">Refused scan</text>
+          <text class="small" x="430" y="272" text-anchor="middle">400, the UI says why</text>
+          <text class="title" x="540" y="182" text-anchor="middle">Inline banner</text>
+          <text class="title" x="650" y="254" text-anchor="middle">Timeout or fault</text>
+          <text class="small" x="650" y="272" text-anchor="middle">504 / 500, value-free</text>
+          <text class="small" x="540" y="254" text-anchor="middle">never an empty grid</text>
+        </svg>
+      </div>
+      <p class="scroll-note">Swipe the map sideways to follow the whole line.</p></div>
+      <div class="map-v">
+        <svg class="dg" viewBox="0 0 340 650" role="img" aria-labelledby="hmv-t hmv-d"><desc id="hmv-d">The query line from a grid change through one request, the guard, the SQL builder and the database to the rendered page. Below it, a refused scan from the guard and a timeout or fault from the database both end at the inline banner.</desc><title id="hmv-t">The line one page request rides, from a grid change to a rendered page, with the refused-scan and fault branches ending at the inline banner</title>
+          <path class="rail query" d="M40,30 L40,390"/><path class="rail guard" d="M40,390 L40,462"/><path class="rail error" d="M40,462 L40,606"/>
+          <circle class="stn query" cx="40" cy="30" r="11"/><text class="title" x="72" y="28">Grid change</text><text class="small" x="72" y="46">sort, filter, page or search</text>
+          <circle class="stn query" cx="40" cy="102" r="11"/><text class="title" x="72" y="100">One request</text><text class="small" x="72" y="118">POST body, one shape</text>
+          <circle class="stn ix" cx="40" cy="174" r="14"/><text class="title" x="72" y="172">Guard</text><text class="small" x="72" y="190">allow-list + limits</text>
+          <circle class="stn query" cx="40" cy="246" r="11"/><text class="title" x="72" y="244">SQL builder</text><text class="small" x="72" y="262">bound parameters only</text>
+          <circle class="stn ix" cx="40" cy="318" r="14"/><text class="title" x="72" y="316">Database</text><text class="small" x="72" y="334">SQL Server or Oracle</text>
+          <circle class="stn term" cx="40" cy="390" r="13"/><text class="title" x="72" y="388">Page</text><text class="small" x="72" y="406">strict parse, honest total</text>
+          <circle class="stn guard" cx="40" cy="462" r="11"/><text class="title" x="72" y="460">Refused scan</text><text class="small" x="72" y="478">from the guard: 400, the UI says why</text>
+          <circle class="stn error" cx="40" cy="534" r="11"/><text class="title" x="72" y="532">Timeout or fault</text><text class="small" x="72" y="550">from the database: 504 / 500</text>
+          <circle class="stn term" cx="40" cy="606" r="13" style="fill:var(--l-error);stroke:var(--l-error)"/><text class="title" x="72" y="604">Inline banner</text><text class="small" x="72" y="622">never an empty grid</text>
+        </svg>
+      </div>
+    </figure>
+
+    <dl class="meta">
+      <div><dt>My role</dt><dd>Author &amp; architect</dd></div>
+      <div><dt>Scope</dt><dd>Contract, .NET framework, SQL dialects, Angular data source, developer guides</dd></div>
+      <div><dt>Stack</dt><dd>.NET 8, Dapper, SQL Server, Oracle, Angular, AG Grid</dd></div>
+      <div><dt>Status</dt><dd>Framework + first adopting grid &middot; <a href="https://github.com/the3ma/server-side-grid-framework">sample on GitHub</a></dd></div>
+    </dl>
+  </div>
+</section>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#summary">Summary</a></li>
+      <li><a href="#before">Before</a></li>
+      <li><a href="#requirements">Requirements</a></li>
+      <li><a href="#users">Who it serves</a></li>
+      <li><a href="#product">The product</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#decisions">Decisions</a></li>
+      <li><a href="#implementation">Implementation</a></li>
+      <li><a href="#compliance">Compliance</a></li>
+      <li><a href="#tradeoffs">Trade-offs</a></li>
+      <li><a href="#results">Results</a></li>
+      <li><a href="#try">Try it</a></li>
+      <li><a href="#lessons">Lessons</a></li>
+      <li><a href="#next">What&rsquo;s next</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ol>
+  </nav>
+
+  <article class="article">
+    <details class="toc-mobile">
+      <summary><span>On this page</span><span class="toc-current"></span></summary>
+      <ol>
+        <li><a href="#summary">Summary</a></li>
+        <li><a href="#before">Before</a></li>
+        <li><a href="#requirements">Requirements</a></li>
+        <li><a href="#users">Who it serves</a></li>
+        <li><a href="#product">The product</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#decisions">Decisions</a></li>
+        <li><a href="#implementation">Implementation</a></li>
+        <li><a href="#compliance">Compliance</a></li>
+        <li><a href="#tradeoffs">Trade-offs</a></li>
+        <li><a href="#results">Results</a></li>
+        <li><a href="#try">Try it</a></li>
+        <li><a href="#lessons">Lessons</a></li>
+        <li><a href="#next">What&rsquo;s next</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ol>
+    </details>
+
+    <!-- SUMMARY -->
+    <section class="section" id="summary" aria-labelledby="h-summary">
+      <h2 id="h-summary">Executive summary</h2>
+      <p class="intro">The whole story in thirty seconds.</p>
+      <div class="ruled-3">
+        <div><h3>The problem</h3><p>Every grid spoke its own dialect: five response shapes, pages counted from 0 or from 1, a stored procedure with no page-size cap and many grids that pulled every row into the browser. Each server-side grid hand-wrote its own SQL builder.</p></div>
+        <div><h3>The approach</h3><p>One request/response contract, a per-grid column allow-list, one SQL builder with SQL Server and Oracle dialects and one Angular data source. A new grid declares its columns once on each side.</p></div>
+        <div><h3>The outcome</h3><p>Paging, multi-sort, typed filters, set values and quick search on every grid built on it, with SQL that cannot be injected, a row scope that filters can only narrow, a server-side guard against full scans and typed errors instead of empty grids.</p></div>
+      </div>
+    </section>
+
+    <!-- BEFORE -->
+    <section class="section" id="before" aria-labelledby="h-before">
+      <h2 id="h-before">Every grid, its own dialect</h2>
+      <p class="intro">Nothing was broken on any one screen. Across the portal, though, every grid had solved paging, sorting and filtering differently, and every new grid solved it again.</p>
+      <div class="table-wrap">
+        <table class="stack-sm">
+          <thead><tr><th scope="col">What we found</th><th scope="col">Root cause</th><th scope="col">Fixed by</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" data-label="What we found">Five different response shapes for grid endpoints</th><td data-label="Root cause">Each feature designed its own</td><td data-label="Fixed by"><span class="fix">one <code>GridPage</code> contract</span></td></tr>
+            <tr><th scope="row" data-label="What we found">Pages counted from 0 in some grids, from 1 in others, keyset cursors in a third</th><td data-label="Root cause">No shared paging rule</td><td data-label="Fixed by"><span class="fix">0-based page, size 1&ndash;500</span></td></tr>
+            <tr><th scope="row" data-label="What we found">A stored procedure that would return any number of rows</th><td data-label="Root cause">No page-size cap anywhere on the path</td><td data-label="Fixed by"><span class="fix">a hard limit enforced by the guard</span></td></tr>
+            <tr><th scope="row" data-label="What we found">Hand-rolled <code>ROWNUM</code> paging on Oracle, and grids that only pretended to page</th><td data-label="Root cause">Paging re-implemented per grid</td><td data-label="Fixed by"><span class="fix"><code>OFFSET / FETCH</code> in the dialect</span></td></tr>
+            <tr><th scope="row" data-label="What we found">Many grids loaded every row into the browser</th><td data-label="Root cause">Client-side grids were the easy default</td><td data-label="Fixed by"><span class="fix">a server-side data source</span></td></tr>
+            <tr><th scope="row" data-label="What we found">A new SQL builder and request mapper for every server-side grid</th><td data-label="Root cause">Nothing shared to build on</td><td data-label="Fixed by"><span class="fix">one allow-list, one SQL builder</span></td></tr>
+            <tr><th scope="row" data-label="What we found">The shared table sent only text filters and a single sort to the server</th><td data-label="Root cause">Non-text filters were dropped on the way</td><td data-label="Fixed by"><span class="fix">five typed filters, three sorts</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="source-note">From the framework&rsquo;s own design notes. The portal, the client and the product are not named.</p>
+    </section>
+
+    <!-- REQUIREMENTS -->
+    <section class="section" id="requirements" aria-labelledby="h-requirements">
+      <h2 id="h-requirements">What every grid had to guarantee</h2>
+      <p class="intro">In a regulated data portal a grid is a window onto controlled data. These guarantees are the acceptance test for the framework, and every grid inherits them.</p>
+      <ul class="stations">
+        <li><strong>One contract</strong><span>The same request and response for every grid: page, page size, up to three sorts, typed filters, quick search, total on demand.</span></li>
+        <li><strong>Safe by construction</strong><span>No request value is ever concatenated into SQL. Fields, operators and directions resolve only through the grid&rsquo;s allow-list.</span></li>
+        <li><strong>Row scope only narrows</strong><span>What a user may see comes from their identity, never the request. Filters can remove rows from it, never add.</span></li>
+        <li><strong>Same behaviour on both databases</strong><span>SQL Server and Oracle produce the same rows for the same request, including escaping, blanks and null ordering.</span></li>
+        <li><strong>Large datasets protected</strong><span>Filters that can only full-scan are refused until an indexed filter narrows the set, and the UI explains why.</span></li>
+        <li><strong>Never an empty grid on failure</strong><span>Every error is typed and shown as an error. A grid that failed to load never looks like a grid with no data.</span></li>
+        <li><strong>No values in URLs, logs or errors</strong><span>Filter values travel only in POST bodies; logs and messages carry field ids, operators and counts.</span></li>
+        <li><strong>Dates mean the same thing for everyone</strong><span>Regulated record dates filter on UTC days; operational dates on the user&rsquo;s own calendar.</span></li>
+        <li><strong>Honest totals</strong><span>A total that was not counted is unknown, not zero.</span></li>
+        <li><strong>Accessible</strong><span>Errors, hints and limits are announced to screen readers (WCAG 2.1 AA).</span></li>
+      </ul>
+    </section>
+
+    <!-- USERS -->
+    <section class="section" id="users" aria-labelledby="h-users">
+      <h2 id="h-users">Who it serves</h2>
+      <p class="intro">A shared framework has two kinds of users: the people who build grids and the people who use them. Compliance sits between the two.</p>
+      <div class="ruled-3 personas">
+        <article class="persona">
+          <h3>Feature developers</h3>
+          <p class="role">Build the portal&rsquo;s grids</p>
+          <dl>
+            <div><dt>Job</dt><dd>Ship a new paged, sorted, filtered grid without becoming a SQL-builder author.</dd></div>
+            <div><dt>Pain points</dt><dd>A new SQL builder, request mapper and stale-reply guard per grid; a different response shape each time.</dd></div>
+            <div><dt>What they got</dt><dd>Declare the columns once on each side; paging, filters, guard, cancellation and errors come with it. A worked example and a contract test.</dd></div>
+          </dl>
+        </article>
+        <article class="persona">
+          <h3>Compliance &amp; security</h3>
+          <p class="role">Own access control and data integrity</p>
+          <dl>
+            <div><dt>Job</dt><dd>Know that no grid can leak rows, columns or values, and that what users see is complete and true.</dd></div>
+            <div><dt>Pain points</dt><dd>Hand-written SQL per grid to review; values in URLs; empty grids that hid failures.</dd></div>
+            <div><dt>What they got</dt><dd>One allow-list to review, POST-only values, value-free errors, fail-closed restricted columns and null instead of a false zero.</dd></div>
+          </dl>
+        </article>
+        <article class="persona">
+          <h3>Portal users</h3>
+          <p class="role">Search large, regulated datasets</p>
+          <dl>
+            <div><dt>Job</dt><dd>Find the right records quickly in grids with many thousands of rows.</dd></div>
+            <div><dt>Pain points</dt><dd>Grids that loaded everything first; one sort column; no way to tell a failure from no results.</dd></div>
+            <div><dt>What they got</dt><dd>Server paging, three sorts, typed filters with server-side value lists, a clear error banner with &ldquo;Try again&rdquo;, and a hint when a search is too broad.</dd></div>
+          </dl>
+        </article>
+      </div>
+    </section>
+
+    <!-- PRODUCT -->
+    <section class="section" id="product" aria-labelledby="h-product">
+      <h2 id="h-product">The product</h2>
+      <p class="intro">The public sample runs the framework on a synthetic warehouse shipment tracker: 80,000 rows for one tenant, a guarded grid and a restricted column.</p>
+      <figure class="shot">
+        <picture>
+          <source media="(max-width: 560px)" srcset="images/shipments-grid-mobile.png" width="896" height="1520">
+          <img src="images/shipments-grid.png" width="2880" height="1520" loading="lazy" decoding="async" alt="Shipments grid of the sample app: a search box, a demo tenant switch and a Finance role toggle above a server-side grid of 80,000 synthetic shipments. A hint explains that contains, does not contain, ends with and search work once an indexed column such as Shipment ID, Tracking no., Warehouse or Status is filtered, because the grid can hold more than 50,000 rows. Each date column states its zone: Shipped in the user's time zone, Delivered in UTC days.">
+        </picture>
+        <figcaption><p>The Angular sample against its in-memory mock backend (<code>npm run start:mock</code>), with the same allow-list, guard and null-total rules as the API. The hint is the large-dataset guard speaking; each date column says which zone its filter uses.</p></figcaption>
+      </figure>
+    </section>
+
+    <!-- ARCHITECTURE -->
+    <section class="section" id="architecture" aria-labelledby="h-architecture">
+      <h2 id="h-architecture">Solution architecture</h2>
+      <p class="intro">A feature owns two things: its column declaration and its base query. Everything between the click and the rows is shared, validated once and identical for every grid.</p>
+      <ul class="legend" aria-label="Legend">
+        <li><i></i>Query line</li>
+        <li><i class="guard"></i>Guard line</li>
+        <li><i class="error"></i>Error line</li>
+      </ul>
+      <div class="figures">
+        <figure>
+          <header><h3>System map</h3><span>Figure 1</span></header>
+          <div class="diagram" tabindex="0" role="region" aria-label="System map diagram">
+            <svg class="dg" viewBox="0 0 920 440" role="img" aria-labelledby="f1-t f1-d">
+              <title id="f1-t">System map</title>
+              <desc id="f1-d">In the browser, a feature declares its columns once and creates a data source, which the server grid component uses to request blocks of rows. On the query line the data source posts a grid request to a thin, authorized controller; a generic grid decorator validates it, applies the guard and a 30-second timeout, and calls the feature handler, which owns only the base SQL and row scope. The handler calls the executor, which builds the page and optional count with the SQL builder and a dialect for SQL Server, Oracle or SQLite, and runs them on the database. On the guard line the decorator resolves the request against the column map and its limits. On the error line the decorator's failures become one of four typed ProblemDetails, which return to the server grid and are shown as an inline banner.</desc>
+              <text class="small" x="135" y="36" text-anchor="middle">BROWSER (ANGULAR)</text>
+              <text class="small" x="460" y="36" text-anchor="middle">API (ASP.NET CORE)</text>
+              <text class="small" x="785" y="36" text-anchor="middle">GRID CORE (.NET)</text>
+              <!-- rails -->
+              <path class="rail query" d="M230,188 L300,188 L300,88 L365,88"/>
+              <path class="rail query" d="M460,116 L460,160"/>
+              <path class="rail query" d="M460,216 L460,260"/>
+              <path class="rail query" d="M555,288 L640,288 L640,188 L690,188"/>
+              <path class="rail query" d="M785,216 L785,260"/>
+              <path class="rail query" d="M785,316 L785,360"/>
+              <path class="rail guard" d="M555,176 L600,176 L600,88 L690,88"/>
+              <path class="rail error" d="M365,200 L330,200 L330,388 L365,388"/>
+              <path class="rail error" d="M365,404 L135,404 L135,316"/>
+              <path class="edge" d="M135,116 L135,160"/>
+              <path class="edge" d="M135,216 L135,260"/>
+              <!-- boxes -->
+              <rect class="box" x="40" y="60" width="190" height="56" rx="10"/><text class="title" x="135" y="84" text-anchor="middle">Feature</text><text class="small" x="135" y="102" text-anchor="middle">declares columns once</text>
+              <rect class="box" x="40" y="160" width="190" height="56" rx="10"/><text class="title" x="135" y="184" text-anchor="middle">Data source</text><text class="small" x="135" y="202" text-anchor="middle">request mapper, strict parse</text>
+              <rect class="box" x="40" y="260" width="190" height="56" rx="10"/><text class="title" x="135" y="284" text-anchor="middle">Server grid</text><text class="small" x="135" y="302" text-anchor="middle">AG Grid, cancel, banner</text>
+              <rect class="box" x="365" y="60" width="190" height="56" rx="10"/><text class="title" x="460" y="84" text-anchor="middle">Controller</text><text class="small" x="460" y="102" text-anchor="middle">thin, authorized</text>
+              <rect class="box" x="365" y="160" width="190" height="56" rx="10"/><text class="title" x="460" y="184" text-anchor="middle">Grid decorator</text><text class="small" x="460" y="202" text-anchor="middle">validate, guard, 30 s</text>
+              <rect class="box" x="365" y="260" width="190" height="56" rx="10"/><text class="title" x="460" y="284" text-anchor="middle">Feature handler</text><text class="small" x="460" y="302" text-anchor="middle">base SQL + row scope</text>
+              <rect class="box" x="365" y="360" width="190" height="56" rx="10"/><text class="title" x="460" y="384" text-anchor="middle">ProblemDetails</text><text class="small" x="460" y="402" text-anchor="middle">four typed errors</text>
+              <rect class="box" x="690" y="60" width="190" height="56" rx="10"/><text class="title" x="785" y="84" text-anchor="middle">Column map + guard</text><text class="small" x="785" y="102" text-anchor="middle">allow-list, limits</text>
+              <rect class="box" x="690" y="160" width="190" height="56" rx="10"/><text class="title" x="785" y="184" text-anchor="middle">SQL builder</text><text class="small" x="785" y="202" text-anchor="middle">derived table, bound params</text>
+              <rect class="box" x="690" y="260" width="190" height="56" rx="10"/><text class="title" x="785" y="284" text-anchor="middle">Dialects</text><text class="small" x="785" y="302" text-anchor="middle">SQL Server, Oracle, SQLite</text>
+              <rect class="ext" x="690" y="360" width="190" height="56" rx="10"/><text class="title" x="785" y="384" text-anchor="middle">Database</text><text class="small" x="785" y="402" text-anchor="middle">page + optional count</text>
+              <!-- line labels -->
+              <text class="small" x="290" y="142" text-anchor="end">POST body</text>
+              <text class="small lbl" x="645" y="80" text-anchor="middle">resolve</text>
+              <text class="small lbl" x="640" y="244" text-anchor="middle">execute</text>
+              <text class="small" x="250" y="426" text-anchor="middle">400, 504, 500</text>
+              <text class="small lbl" x="135" y="142" text-anchor="middle">columns</text>
+              <text class="small lbl" x="135" y="242" text-anchor="middle">blocks</text>
+            </svg>
+          </div>
+          <figcaption><p>The decorator is registered once for every grid query and wraps the handler from the outside, so validation and the guard run before any cache or database work. The handler never sees an unvalidated request. The public sample is smaller: its controller calls the executor, which runs the same guard; the decorator and its cache refusal are part of the production design.</p></figcaption>
+        </figure>
+        <div class="table-wrap">
+          <table class="stack-sm">
+            <thead><tr><th scope="col">Piece</th><th scope="col">Responsibility</th><th scope="col">Owned by</th></tr></thead>
+            <tbody>
+              <tr><th scope="row" data-label="Piece">Column map</th><td data-label="Responsibility">The allow-list: field id &rarr; constant SQL expression, type, operators, flags, tiebreaker, default sort, guard threshold</td><td data-label="Owned by">each grid (backend)</td></tr>
+              <tr><th scope="row" data-label="Piece">Guard</th><td data-label="Responsibility">Turns a request into a validated plan: limits, allow-list, value types, the large-dataset rule, restricted columns, capabilities</td><td data-label="Owned by">framework</td></tr>
+              <tr><th scope="row" data-label="Piece">SQL builder + dialects</th><td data-label="Responsibility">Wraps the base SQL, adds filters, search, sort, paging and the optional count, per database</td><td data-label="Owned by">framework</td></tr>
+              <tr><th scope="row" data-label="Piece">Grid decorator</th><td data-label="Responsibility">Validates and guards every grid query, applies the timeout and the null-total rule, logs a value-free summary, refuses caching</td><td data-label="Owned by">framework</td></tr>
+              <tr><th scope="row" data-label="Piece">Feature handler</th><td data-label="Responsibility">The base SQL and the row scope, bound to the caller&rsquo;s identity</td><td data-label="Owned by">each grid (backend)</td></tr>
+              <tr><th scope="row" data-label="Piece">Column declaration</th><td data-label="Responsibility">Mirrors the map; generates the grid&rsquo;s column definitions and the request mapping</td><td data-label="Owned by">each grid (frontend)</td></tr>
+              <tr><th scope="row" data-label="Piece">Data source + server grid</th><td data-label="Responsibility">Maps grid state to one request, strict parse, cancellation, set-filter values, banners and hints</td><td data-label="Owned by">framework</td></tr>
+              <tr><th scope="row" data-label="Piece">Manifest</th><td data-label="Responsibility">A SQL-free JSON description of each map; the frontend test fails when the two sides drift</td><td data-label="Owned by">framework</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- DECISIONS -->
+    <section class="section" id="decisions" aria-labelledby="h-decisions">
+      <h2 id="h-decisions">Decisions</h2>
+      <p class="intro">Six architecture decision records, one per risk: injection, full scans, row scope, silent failures, time zones and invented numbers.</p>
+      <div class="ledger">
+        <article class="ledger-row lead">
+          <div class="ledger-head"><h3>A per-grid column allow-list; no request value ever becomes SQL</h3><a class="adr" href="https://github.com/the3ma/server-side-grid-framework/blob/main/docs/adr/0001-column-allow-list.md">ADR-0001</a></div>
+          <dl>
+            <div><dt>Context</dt><dd>A grid request names columns, operators and directions chosen by the browser. Every hand-written builder was a fresh chance of injection.</dd></div>
+            <div><dt>Decision</dt><dd>Each grid declares a static map from field id to a constant SQL expression. Requests only choose among entries; every value is a generated, bound parameter.</dd></div>
+            <div class="why"><dt>Result</dt><dd>Injection is impossible by construction. Snapshot tests prove request values never reach the SQL text on any dialect; unknown or malformed field ids are rejected before any SQL is built.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row lead">
+          <div class="ledger-head"><h3>The large-dataset guard is a server rule, not a UI rule</h3><a class="adr" href="https://github.com/the3ma/server-side-grid-framework/blob/main/docs/adr/0002-large-dataset-guard-on-the-server.md">ADR-0002</a></div>
+          <dl>
+            <div><dt>Context</dt><dd><code>contains</code>, <code>endsWith</code> and free-text search can&rsquo;t use an index. Hiding them in the UI protects nobody who calls the API directly.</dd></div>
+            <div><dt>Decision</dt><dd>On a guarded grid they are refused with <code>400 grid-filter-too-broad</code> unless an indexed filter narrows the set. Every page reports capabilities to the UI.</dd></div>
+            <div class="why"><dt>Result</dt><dd>No caller can start a full scan, and users see why a search was refused and what to filter first.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <div class="ledger-head"><h3>Wrap the base query; filters can only narrow the row scope</h3><a class="adr" href="https://github.com/the3ma/server-side-grid-framework/blob/main/docs/adr/0003-filters-only-narrow-the-row-scope.md">ADR-0003</a></div>
+          <dl>
+            <div><dt>Context</dt><dd>Row-level access lives in each grid&rsquo;s base query. Splicing filters into its <code>WHERE</code> risks an <code>OR</code> that widens it.</dd></div>
+            <div><dt>Decision</dt><dd>The base SQL becomes derived table <code>g</code>; filters, sort, tiebreaker and paging are applied outside it. Scope parameters come from the identity only.</dd></div>
+            <div class="why"><dt>Result</dt><dd>A filter can only remove rows a user may already see, and paging is stable.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <div class="ledger-head"><h3>Typed, value-free errors; a failure is never an empty grid</h3><a class="adr" href="https://github.com/the3ma/server-side-grid-framework/blob/main/docs/adr/0004-typed-errors-never-an-empty-grid.md">ADR-0004</a></div>
+          <dl>
+            <div><dt>Context</dt><dd>An empty grid reads as &ldquo;no data&rdquo;, a data-integrity problem. Messages that echo a filter value put it into logs.</dd></div>
+            <div><dt>Decision</dt><dd>Four ProblemDetails types with field-level codes and no values. The UI shows an inline alert with &ldquo;Try again&rdquo;.</dd></div>
+            <div class="why"><dt>Result</dt><dd>Failures are visible, and logs carry ids, operators and counts only.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <div class="ledger-head"><h3>Date semantics belong to the column, not the client</h3><a class="adr" href="https://github.com/the3ma/server-side-grid-framework/blob/main/docs/adr/0005-date-semantics-belong-to-the-column.md">ADR-0005</a></div>
+          <dl>
+            <div><dt>Context</dt><dd>&ldquo;3 March&rdquo; is a different instant in Tokyo and New York, and browsers shift parsed dates silently.</dd></div>
+            <div><dt>Decision</dt><dd>Each date column is <code>utc</code>, <code>local</code> or <code>calendar</code>; the client sends plain <code>YYYY-MM-DD</code>; every range is half-open.</dd></div>
+            <div class="why"><dt>Result</dt><dd>Regulated dates filter identically for everyone; operational dates match the user&rsquo;s day.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <div class="ledger-head"><h3>A total is null when not counted; a malformed page is an error</h3><a class="adr" href="https://github.com/the3ma/server-side-grid-framework/blob/main/docs/adr/0006-null-total-and-strict-pages.md">ADR-0006</a></div>
+          <dl>
+            <div><dt>Context</dt><dd>Counting can cost as much as the page; a &ldquo;0&rdquo; for an uncounted total is a false statement.</dd></div>
+            <div><dt>Decision</dt><dd>Count only on request, else <code>null</code>. Parse every page strictly; one bad row fails the page.</dd></div>
+            <div class="why"><dt>Result</dt><dd>Paging forward costs one query, and no number on screen is invented.</dd></div>
+          </dl>
+        </article>
+      </div>
+    </section>
+
+    <!-- IMPLEMENTATION -->
+    <section class="section" id="implementation" aria-labelledby="h-implementation">
+      <h2 id="h-implementation">Implementation</h2>
+      <p class="intro">Three mechanisms carry the guarantees: the SQL the builder writes, the decision every request goes through, and the errors that come out of it.</p>
+      <div class="figures">
+        <figure>
+          <header><h3>What the SQL builder writes</h3><span>Figure 2</span></header>
+<pre class="sql" aria-label="Generated SQL for one page on Oracle"><span class="k">SELECT</span> g.*
+<span class="k">FROM</span> (
+  <span class="c">-- the handler's base SQL: projection, joins, row scope bound to the caller</span>
+) g
+<span class="k">WHERE</span> UPPER(g.Destination) <span class="k">LIKE</span> UPPER(<span class="p">:grid_p0</span>) <span class="k">ESCAPE</span> '\'
+  <span class="k">AND</span> g.Status <span class="k">IN</span> (<span class="p">:grid_p1</span>, <span class="p">:grid_p2</span>)
+  <span class="k">AND</span> g.WarehouseCode = UPPER(<span class="p">:grid_p3</span>)      <span class="c">-- indexed: lifts the guard</span>
+<span class="k">ORDER BY</span> g.TrackingNo <span class="k">DESC NULLS LAST</span>, g.ShipmentId <span class="k">ASC NULLS FIRST</span>   <span class="c">-- + tiebreaker</span>
+<span class="k">OFFSET</span> <span class="p">:grid_offset</span> <span class="k">ROWS FETCH NEXT</span> <span class="p">:grid_fetch</span> <span class="k">ROWS ONLY</span></pre>
+          <figcaption><p>The SQL text depends only on the request&rsquo;s shape: which fields, which operators, how many values. Every value is a generated parameter. A count query over the same <code>WHERE</code> runs only when the client asks for a total.</p></figcaption>
+        </figure>
+
+        <figure>
+          <header><h3>Every request goes through the guard</h3><span>Figure 3</span></header>
+          <div class="diagram" tabindex="0" role="region" aria-label="Guard decision diagram">
+            <svg class="dg" viewBox="0 0 920 300" role="img" aria-labelledby="f3-t f3-d">
+              <title id="f3-t">Every request goes through the guard</title>
+              <desc id="f3-d">A request passes seven stations in order: the shape is within limits (page, page size, up to three sorts, search of at most 200 characters); every field, operator and direction is in the column map; values are valid for the column type; the grid is guarded; a scan filter or search is used; the request is narrowed by an indexed filter or a small known row set; then the page runs with bound parameters and reports capabilities. A failure at any of the first three stations returns 400 grid-request-invalid with errors per field. A scan that is not narrowed returns 400 grid-filter-too-broad with the fields and the threshold.</desc>
+              <path class="rail error" d="M60,80 L60,236 L326,236"/>
+              <path class="rail error" d="M193,80 L193,236"/>
+              <path class="rail error" d="M326,80 L326,236"/>
+              <path class="rail guard" d="M725,80 L725,236"/>
+              <path class="rail query" d="M60,80 L860,80"/>
+              <circle class="stn query" cx="60" cy="80" r="11"/>
+              <circle class="stn query" cx="193" cy="80" r="11"/>
+              <circle class="stn query" cx="326" cy="80" r="11"/>
+              <circle class="stn ix" cx="459" cy="80" r="14"/>
+              <circle class="stn query" cx="592" cy="80" r="11"/>
+              <circle class="stn ix" cx="725" cy="80" r="14"/>
+              <circle class="stn term" cx="860" cy="80" r="13"/>
+              <circle class="stn term" cx="193" cy="236" r="13" style="fill:var(--l-error);stroke:var(--l-error)"/>
+              <circle class="stn term" cx="725" cy="236" r="13" style="fill:var(--l-guard);stroke:var(--l-guard)"/>
+              <text class="title" x="60" y="44" text-anchor="middle">Shape</text>
+              <text class="small lbl" x="60" y="122" text-anchor="middle">page, size,</text><text class="small lbl" x="60" y="138" text-anchor="middle">sorts, search</text>
+              <text class="title" x="193" y="44" text-anchor="middle">Allow-list</text>
+              <text class="small lbl" x="193" y="122" text-anchor="middle">field, op, dir</text><text class="small lbl" x="193" y="138" text-anchor="middle">in the map?</text>
+              <text class="title" x="326" y="44" text-anchor="middle">Values</text>
+              <text class="small lbl" x="326" y="122" text-anchor="middle">type, range,</text><text class="small lbl" x="326" y="138" text-anchor="middle">set size</text>
+              <text class="title" x="459" y="44" text-anchor="middle">Guarded?</text>
+              <text class="small" x="459" y="122" text-anchor="middle">threshold set</text><text class="small" x="459" y="138" text-anchor="middle">on this grid</text>
+              <text class="title" x="592" y="44" text-anchor="middle">Scan filter?</text>
+              <text class="small" x="592" y="122" text-anchor="middle">contains, endsWith,</text><text class="small" x="592" y="138" text-anchor="middle">quick search</text>
+              <text class="title" x="725" y="44" text-anchor="middle">Narrowed?</text>
+              <text class="small lbl" x="725" y="122" text-anchor="middle">indexed filter or</text><text class="small lbl" x="725" y="138" text-anchor="middle">small known set</text>
+              <text class="title" x="860" y="44" text-anchor="middle">Run the page</text>
+              <text class="small" x="860" y="122" text-anchor="middle">bound params,</text><text class="small" x="860" y="138" text-anchor="middle">capabilities</text>
+              <text class="title" x="193" y="276" text-anchor="middle">400 grid-request-invalid</text>
+              <text class="small" x="193" y="294" text-anchor="middle">errors and codes per field, no values</text>
+              <text class="title" x="725" y="276" text-anchor="middle">400 grid-filter-too-broad</text>
+              <text class="small" x="725" y="294" text-anchor="middle">the fields and the threshold</text>
+            </svg>
+          </div>
+          <figcaption><p>A grid without a threshold, or a request with no scan filter, goes straight to the page. A guarded grid then reports <code>textFilters: disabled</code>, so the UI removes the scan operators and tells the user which indexed filters lift the limit. The rule lives on the server, so it also holds for direct API calls.</p></figcaption>
+        </figure>
+      </div>
+
+      <h3 class="subhead">Errors the user can act on</h3>
+      <div class="table-wrap">
+        <table class="stack-sm">
+          <thead><tr><th scope="col">Status and type</th><th scope="col">Carries</th><th scope="col">What the user sees</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" data-label="Status and type"><code>400 grid-request-invalid</code></th><td data-label="Carries">errors and error codes per field</td><td data-label="What the user sees">the column named by its header</td></tr>
+            <tr><th scope="row" data-label="Status and type"><code>400 grid-filter-too-broad</code></th><td data-label="Carries">the refused fields and the threshold</td><td data-label="What the user sees">&ldquo;Clear refused filters&rdquo; and which filters narrow first</td></tr>
+            <tr><th scope="row" data-label="Status and type"><code>504 grid-query-timeout</code></th><td data-label="Carries">the timeout in seconds</td><td data-label="What the user sees">a timeout banner with &ldquo;Try again&rdquo;</td></tr>
+            <tr><th scope="row" data-label="Status and type"><code>500 grid-query-failed</code></th><td data-label="Carries">nothing</td><td data-label="What the user sees">an error banner; the fault is reported to monitoring</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="subhead">Two databases, one behaviour</h3>
+      <div class="table-wrap">
+        <table class="stack-sm">
+          <thead><tr><th scope="col">Concern</th><th scope="col">SQL Server</th><th scope="col">Oracle</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" data-label="Concern">Parameters</th><td data-label="SQL Server"><code>@grid_pN</code></td><td data-label="Oracle"><code>:grid_pN</code></td></tr>
+            <tr><th scope="row" data-label="Concern">Text match</th><td data-label="SQL Server"><code>LIKE</code> with <code>% _ \ [</code> escaped; case-insensitive collation</td><td data-label="Oracle"><code>UPPER(col) LIKE UPPER(:p)</code>, or the bare column when stored upper-case</td></tr>
+            <tr><th scope="row" data-label="Concern">Blank text</th><td data-label="SQL Server"><code>NULL</code> or empty string</td><td data-label="Oracle"><code>NULL</code> (empty string is <code>NULL</code>)</td></tr>
+            <tr><th scope="row" data-label="Concern">Set filter</th><td data-label="SQL Server">one JSON parameter through <code>OPENJSON</code></td><td data-label="Oracle"><code>IN</code> lists of 200 binds, under the 1,000-item limit</td></tr>
+            <tr><th scope="row" data-label="Concern">Null ordering</th><td data-label="SQL Server">native</td><td data-label="Oracle">explicit <code>NULLS FIRST / LAST</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- COMPLIANCE -->
+    <section class="section" id="compliance" aria-labelledby="h-compliance">
+      <h2 id="h-compliance">Compliance, front-loaded</h2>
+      <p class="intro">The framework turns obligations that every grid used to meet by hand into properties it inherits.</p>
+      <div class="table-wrap">
+        <table class="stack-sm">
+          <thead><tr><th scope="col">Obligation</th><th scope="col">How the framework meets it</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" data-label="Obligation">Data protection</th><td data-label="How the framework meets it">Filter and search values travel only in POST bodies, never in URLs. Logs and telemetry carry grid id, field ids, operators and counts; errors never carry values.</td></tr>
+            <tr><th scope="row" data-label="Obligation">Data integrity</th><td data-label="How the framework meets it">No request value is ever part of the SQL text; fields, operators and directions resolve only through the map; tests assert it.</td></tr>
+            <tr><th scope="row" data-label="Obligation">Access control</th><td data-label="How the framework meets it">Row scope from the identity; filters only narrow it. Restricted columns are unknown fields for everyone unless the server opens them for a caller, because a filterable column leaks its values through guessing even when it is hidden.</td></tr>
+            <tr><th scope="row" data-label="Obligation">Complete, accurate records</th><td data-label="How the framework meets it">An uncounted total is <code>null</code>, never 0; a failed or malformed page is an error, never an empty or partial grid.</td></tr>
+            <tr><th scope="row" data-label="Obligation">Electronic records</th><td data-label="How the framework meets it">Regulated record dates use UTC day boundaries, and the grid shows the zone of every date filter.</td></tr>
+            <tr><th scope="row" data-label="Obligation">WCAG 2.1 AA</th><td data-label="How the framework meets it">Error banner <code>role="alert"</code>; guard hint and status messages <code>aria-live="polite"</code>; the three-sort limit has its own live region.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="source-note">Design obligations built into the framework. System validation and change control remain with the quality organisation.</p>
+    </section>
+
+    <!-- TRADE-OFFS -->
+    <section class="section" id="tradeoffs" aria-labelledby="h-tradeoffs">
+      <h2 id="h-tradeoffs">Trade-offs</h2>
+      <p class="intro">A framework that is safe by construction says no to some things. These are the costs accepted on purpose.</p>
+      <div class="table-wrap">
+        <table class="stack-sm">
+          <thead><tr><th scope="col">Chose</th><th scope="col">Instead of</th><th scope="col">The cost, and why it&rsquo;s worth it</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" data-label="Chose">A declared allow-list per grid</th><td data-label="Instead of">A generic query language over any column</td><td data-label="The cost, and why it's worth it">Each column is declared on both sides. A manifest test catches drift, and the review surface for security is one map.</td></tr>
+            <tr><th scope="row" data-label="Chose">A server-side scan guard</th><td data-label="Instead of">Trusting the UI to keep searches reasonable</td><td data-label="The cost, and why it's worth it">Some searches are refused until the user narrows by an indexed column; the UI says which ones.</td></tr>
+            <tr><th scope="row" data-label="Chose">One condition per field, AND across fields</th><td data-label="Instead of">The grid&rsquo;s two-condition and OR filters</td><td data-label="The cost, and why it's worth it">Less expressive, but the client fails loudly instead of sending something the server would read differently.</td></tr>
+            <tr><th scope="row" data-label="Chose">No caching of grid queries</th><td data-label="Instead of">The portal&rsquo;s query cache</td><td data-label="The cost, and why it's worth it">Every page hits the database. A cache key not built from the full request, row scope and column access would serve one user&rsquo;s rows to another.</td></tr>
+            <tr><th scope="row" data-label="Chose">Count only on request</th><td data-label="Instead of">A total with every page</td><td data-label="The cost, and why it's worth it">The UI keeps the last known total while paging, so it can briefly be stale, but it is never invented.</td></tr>
+            <tr><th scope="row" data-label="Chose">Columns must be SQL expressions</th><td data-label="Instead of">Values computed in application code</td><td data-label="The cost, and why it's worth it">A derived label has to move into SQL before its grid can adopt the framework; otherwise it can&rsquo;t be sorted or filtered on the server.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="section" id="results" aria-labelledby="h-results">
+      <h2 id="h-results">Results</h2>
+      <p class="intro">Every guarantee maps to a mechanism, and every mechanism has a test layer.</p>
+      <ul class="stations">
+        <li><strong>One way to build a grid</strong><span>A column declaration on each side and a base query. Paging, multi-sort, five filter types, set values, search, guard, cancellation and errors come with it.</span></li>
+        <li><strong>Injection-safe by construction</strong><span>SQL and parameter snapshots for each dialect prove hostile values never reach the SQL text; guard and API tests reject unknown and malformed field ids.</span></li>
+        <li><strong>Large grids protected</strong><span>Full scans are refused on the server and explained in the UI.</span></li>
+        <li><strong>Failures that look like failures</strong><span>Typed errors and an inline banner; never an empty or partial grid.</span></li>
+        <li><strong>Contract drift caught early</strong><span>The backend emits a manifest of each map; the frontend test fails when its declaration differs.</span></li>
+        <li><strong>Adopted</strong><span>The first grid moved onto the framework: an administration grid.</span></li>
+      </ul>
+      <h3 class="subhead">System figures</h3>
+      <div class="table-wrap">
+        <table class="stack-sm">
+          <thead><tr><th scope="col">Limit</th><th scope="col">Value</th><th scope="col">Why</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" data-label="Limit">Page size</th><td class="num" data-label="Value">1&ndash;500, default 100</td><td data-label="Why">No request can load a whole table.</td></tr>
+            <tr><th scope="row" data-label="Limit">Sort columns</th><td class="num" data-label="Value">3 + tiebreaker</td><td data-label="Why">Enough for real use; stable paging.</td></tr>
+            <tr><th scope="row" data-label="Limit">Filtered fields</th><td class="num" data-label="Value">50</td><td data-label="Why">Bounds the size of the generated <code>WHERE</code>.</td></tr>
+            <tr><th scope="row" data-label="Limit">Values in one set filter</th><td class="num" data-label="Value">1,000</td><td data-label="Why">Bounds bind counts on both databases.</td></tr>
+            <tr><th scope="row" data-label="Limit">Distinct values per value list</th><td class="num" data-label="Value">1,000, flagged when truncated</td><td data-label="Why">The UI says the list is partial.</td></tr>
+            <tr><th scope="row" data-label="Limit">Search text</th><td class="num" data-label="Value">200 characters</td><td data-label="Why">Bounded parameters.</td></tr>
+            <tr><th scope="row" data-label="Limit">Query timeout</th><td class="num" data-label="Value">30 s default</td><td data-label="Why">Becomes a <code>504</code>, never a hung grid.</td></tr>
+            <tr><th scope="row" data-label="Limit">Search debounce</th><td class="num" data-label="Value">400 ms</td><td data-label="Why">One request when the user stops typing.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="source-note">Values from the framework&rsquo;s documentation. They describe how the system behaves, not business KPIs; production volumes and timings are not published.</p>
+    </section>
+
+    <!-- TRY IT -->
+    <section class="section" id="try" aria-labelledby="h-try">
+      <h2 id="h-try">Try it yourself</h2>
+      <p class="intro">The sample runs locally with no database server: the API seeds a SQLite file with 120,000 synthetic shipments on first start.</p>
+<pre class="terminal" aria-label="Commands to run the project locally"><span class="p">$ </span>git clone https://github.com/the3ma/server-side-grid-framework.git
+<span class="p">$ </span>cd server-side-grid-framework
+<span class="p">$ </span>dotnet test                          <span class="c"># 108 tests: guard, SQL snapshots x3 dialects, dates, API</span>
+<span class="p">$ </span>dotnet run --project src/SampleApi   <span class="c"># http://localhost:5080, seeds 120,000 shipments</span>
+<span class="p">$ </span>cd web &amp;&amp; npm ci &amp;&amp; npm start        <span class="c"># http://localhost:4200 through the dev proxy</span></pre>
+      <p class="source-note">No .NET? <code>cd web &amp;&amp; npm ci &amp;&amp; npm run start:mock</code> runs the UI against an in-memory backend with the same rules. The request and response rules are in the <a href="https://github.com/the3ma/server-side-grid-framework/blob/main/docs/CONTRACT.md">grid contract</a>.</p>
+    </section>
+
+    <!-- LESSONS -->
+    <section class="section" id="lessons" aria-labelledby="h-lessons">
+      <h2 id="h-lessons">Lessons</h2>
+      <p class="intro">What carries over to the next shared component in a regulated product.</p>
+      <ul class="stations">
+        <li><strong>Make the safe path the only path.</strong><span>An allow-list that every grid must declare beats a review checklist that every grid must pass.</span></li>
+        <li><strong>Put a rule where every caller passes.</strong><span>A limit enforced in the UI is a suggestion; on the server it is a guarantee.</span></li>
+        <li><strong>Snapshot tests prove the SQL, not the types.</strong><span>A column mapped with the wrong type passes every snapshot. One database-backed test per grid is what catches it.</span></li>
+        <li><strong>Unknown is not zero.</strong><span>An empty grid and a false total both look like answers. In regulated data they have to look like what they are.</span></li>
+      </ul>
+    </section>
+
+    <!-- NEXT -->
+    <section class="section" id="next" aria-labelledby="h-next">
+      <h2 id="h-next">What&rsquo;s next</h2>
+      <p class="intro">Deliberate limits today, and the open questions they leave.</p>
+      <ul class="stations">
+        <li><strong>Server-side exports</strong><span>An export of a server grid can only contain the loaded page, so data-source grids need a server export path.</span></li>
+        <li><strong>Cross-database columns</strong><span>Page and count run on one connection; a column from another database can be shown, not sorted.</span></li>
+        <li><strong>Pure reads only</strong><span>A list endpoint that writes during the read can&rsquo;t page; those reads need to be split first.</span></li>
+        <li><strong>Open defaults</strong><span>Collation, the 30-second timeout, per-grid thresholds, a minimum search length and <code>nvarchar</code> binding on <code>varchar</code> columns.</span></li>
+      </ul>
+    </section>
+
+    <!-- CONTACT -->
+    <section class="contact" id="contact" aria-labelledby="h-contact">
+      <h2 id="h-contact">Building data-heavy grids, or need them safe by construction?</h2>
+      <p>I design and build systems like this one. If you are hiring, or have a problem that looks like it, I&rsquo;d like to hear about it.</p>
+      <ul class="contact-list">
+        <li><a href="mailto:the3ma@gmail.com"><small>Email</small><b>the3ma@gmail.com</b></a></li>
+        <li><a href="https://www.linkedin.com/in/hristo-atanasov-84a525175/"><small>LinkedIn</small><b>Hristo Atanasov</b></a></li>
+        <li><a href="https://github.com/the3ma"><small>GitHub</small><b>github.com/the3ma</b></a></li>
+      </ul>
+    </section>
+  </article>
+</div>
+</main>
+
+<footer class="site">
+  <div class="wrap"><p>Generalized from production work: the employer, client and product are not named, and the sample uses synthetic data. Source code under the MIT licence at <a href="https://github.com/the3ma/server-side-grid-framework">github.com/the3ma/server-side-grid-framework</a>.</p></div>
+</footer>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var media = window.matchMedia('(prefers-color-scheme: light)');
+    var btn = document.getElementById('theme-toggle');
+    var label = btn.querySelector('.label');
+    function isDark() { var t = root.getAttribute('data-theme'); return t ? t === 'dark' : !media.matches; }
+    function render() {
+      var dark = isDark();
+      root.setAttribute('data-resolved', dark ? 'dark' : 'light');
+      label.textContent = dark ? 'Light theme' : 'Dark theme';
+      btn.setAttribute('aria-pressed', String(!dark));
+      btn.setAttribute('aria-label', dark ? 'Switch to the light theme' : 'Switch to the dark theme');
+    }
+    btn.addEventListener('click', function () {
+      var next = isDark() ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      render();
+    });
+    media.addEventListener('change', render);
+    render();
+
+    // Progress bar + the rail as a transit line: stations passed, current station, line fill.
+    var bar = document.querySelector('.progress');
+    var rail = document.querySelector('.toc ol');
+    var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+    var mlinks = Array.prototype.slice.call(document.querySelectorAll('.toc-mobile a'));
+    var mcurrent = document.querySelector('.toc-current');
+    var sections = links.map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)); });
+    var current = null, ticking = false;
+    function update() {
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      bar.style.transform = 'scaleX(' + (max > 0 ? Math.min(1, window.scrollY / max) : 0) + ')';
+      var active = -1;
+      for (var i = 0; i < sections.length; i++) { if (sections[i] && sections[i].getBoundingClientRect().top <= 140) active = i; }
+      var last = sections[sections.length - 1];
+      if ((max > 0 && window.scrollY >= max - 2) || (last && last.getBoundingClientRect().top < window.innerHeight * 0.6)) active = sections.length - 1;
+      if (active !== current) {
+        [links, mlinks].forEach(function (list) {
+          list.forEach(function (a, j) {
+            if (j === active) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+            a.classList.toggle('passed', j < active);
+          });
+        });
+        if (mcurrent) mcurrent.textContent = active > -1 ? links[active].textContent : '';
+        if (rail) {
+          var fill = 0;
+          if (active > -1 && links[active].offsetParent) {
+            var dot = links[active].getBoundingClientRect(), top = rail.getBoundingClientRect();
+            fill = Math.max(0, dot.top + dot.height / 2 - top.top - 12);
+          }
+          rail.style.setProperty('--fill', fill + 'px');
+        }
+        current = active;
+      }
+      ticking = false;
+    }
+    window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    window.addEventListener('resize', function () { current = null; update(); });
+    update();
+    var mobile = document.querySelector('.toc-mobile');
+    if (mobile) mobile.addEventListener('click', function (e) { if (e.target.closest('a')) mobile.removeAttribute('open'); });
+  })();
+</script>
+</body>
+</html>

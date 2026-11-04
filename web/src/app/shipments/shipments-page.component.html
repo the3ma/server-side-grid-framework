@@ -1,0 +1,42 @@
+<header class="page__header">
+  <h1>Shipments</h1>
+  <p class="page__lede">
+    Server-side paging, multi-sort, typed filters and search over a synthetic shipment tracker.
+  </p>
+</header>
+
+<section class="page__toolbar" aria-label="Grid controls">
+  <label class="page__field page__search">
+    <span>Search tracking no. or destination</span>
+    <input
+      type="search"
+      maxlength="200"
+      [value]="search()"
+      (input)="search.set($any($event.target).value)"
+    />
+  </label>
+  <label class="page__field">
+    <span>Demo tenant</span>
+    <select [value]="session.tenant()" (change)="setTenant($any($event.target).value)">
+      <option value="1">Tenant 1 (80,000 rows)</option>
+      <option value="2">Tenant 2 (20,000 rows)</option>
+      <option value="3">Tenant 3 (20,000 rows)</option>
+    </select>
+  </label>
+  <label class="page__check">
+    <input
+      type="checkbox"
+      [checked]="session.finance()"
+      (change)="session.finance.set($any($event.target).checked)"
+    />
+    Finance role (shows Price tier)
+  </label>
+</section>
+
+<gk-server-grid
+  [columns]="columns()"
+  [dataSource]="grid"
+  [searchText]="search()"
+  [refreshKey]="sessionKey()"
+  (clearSearchRequested)="search.set('')"
+/>

@@ -1,0 +1,55 @@
+<div class="gk-grid">
+  <div class="gk-grid__status">
+    <p class="gk-grid__count" aria-live="polite">
+      @if (error()) {
+        Rows not loaded
+      } @else if (total() !== null) {
+        {{ total()!.toLocaleString('en-US') }} rows
+      } @else {
+        Loading results.
+      }
+    </p>
+    <p class="gk-grid__zones">{{ dateHints().join(' · ') }}</p>
+  </div>
+
+  @if (error(); as e) {
+    <div class="gk-grid__banner gk-grid__banner--error" role="alert">
+      <p>{{ errorMessage() }}</p>
+      <div class="gk-grid__actions">
+        @if (e.kind === 'tooBroad') {
+          <button type="button" (click)="clearRefused()">Clear refused filters</button>
+        }
+        <button type="button" (click)="retry()">Try again</button>
+      </div>
+      @if (e.details.traceId) {
+        <p class="gk-grid__trace">Reference: {{ e.details.traceId }}</p>
+      }
+    </div>
+  }
+
+  <p class="gk-grid__hint" aria-live="polite">
+    @if (guarded()) {
+      This grid can hold more than
+      {{ (capabilities().threshold ?? 0).toLocaleString('en-US') }} rows, so "contains", "does not
+      contain", "ends with" and search work once you filter on {{ indexedColumns().join(', ') }}.
+    }
+  </p>
+  <p class="gk-grid__hint" aria-live="polite">{{ sortHint() }}</p>
+
+  <ag-grid-angular
+    class="gk-grid__table"
+    [class.gk-grid__table--failed]="error()"
+    [theme]="theme"
+    [columnDefs]="colDefs()"
+    [defaultColDef]="{ resizable: true, floatingFilter: false, minWidth: 110 }"
+    [components]="components"
+    [context]="context"
+    rowModelType="infinite"
+    [cacheBlockSize]="pageSize"
+    [maxBlocksInCache]="20"
+    [maxConcurrentDatasourceRequests]="2"
+    [alwaysMultiSort]="true"
+    (gridReady)="onGridReady($event)"
+    (sortChanged)="onSortChanged()"
+  />
+</div>
