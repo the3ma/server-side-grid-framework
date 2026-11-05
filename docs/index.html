@@ -577,7 +577,7 @@
       <h2 id="h-next">What&rsquo;s next</h2>
       <p class="intro">Deliberate limits today, and the open questions they leave.</p>
       <ul class="stations">
-        <li><strong>Server-side exports</strong><span>An export of a server grid can only contain the loaded page, so data-source grids need a server export path.</span></li>
+        <li><strong>Server-side exports</strong><span>An export of a server grid can only contain the loaded page, so data-source grids need a server export path. That path is its own case study: the <a href="https://the3ma.github.io/async-export-pipeline/">async export pipeline</a> turns an export into a streamed, audited job.</span></li>
         <li><strong>Cross-database columns</strong><span>Page and count run on one connection; a column from another database can be shown, not sorted.</span></li>
         <li><strong>Pure reads only</strong><span>A list endpoint that writes during the read can&rsquo;t page; those reads need to be split first.</span></li>
         <li><strong>Open defaults</strong><span>Collation, the 30-second timeout, per-grid thresholds, a minimum search length and <code>nvarchar</code> binding on <code>varchar</code> columns.</span></li>

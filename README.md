@@ -115,6 +115,12 @@ frontend test fails when its declaration differs.
   [0005 date semantics](docs/adr/0005-date-semantics-belong-to-the-column.md) ·
   [0006 null total, strict pages](docs/adr/0006-null-total-and-strict-pages.md)
 
+## Related
+
+Exporting a server-side grid needs its own path, because the browser only ever holds one page. That
+is the companion case study: [Async export pipeline](https://the3ma.github.io/async-export-pipeline/)
+([source](https://github.com/the3ma/async-export-pipeline)), an export as a streamed, audited job.
+
 ## Scope
 
 The SQL Server and Oracle dialects are covered by SQL-text and parameter snapshots and by simulated
